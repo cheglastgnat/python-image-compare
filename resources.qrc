@@ -1,0 +1,7 @@
+<!DOCTYPE RCC><RCC version="1.0">
+<qresource prefix="/24x24">
+  <file alias="document-open.png">icons/gnome-wise/24x24/actions/document-open.png</file>
+  <file alias="exit.png">icons/gnome-wise/24x24/actions/exit.png</file>
+
+</qresource>
+</RCC>
