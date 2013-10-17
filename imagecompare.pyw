@@ -13,6 +13,8 @@ import platform
 from PyQt4.QtCore import *
 from PyQt4.QtGui import *
 
+import qrc_resources
+
 __version__ = '0.1.0'
 RE_EXTRACT_NUMBER = re.compile(r'(\d+)')
 
@@ -60,12 +62,12 @@ class MainWindow(QMainWindow):
     fileOpenAction = self.createAction("&Open",
                                        self.loadTwoImageSets,
                                        QKeySequence.Open,
-                                       "fileopen",
+                                       "24x24/document-open",
                                        "Choose two sets of images to compare")
     fileQuitAction = self.createAction("&Quit",
                                        self.close,
                                        "Ctrl+Q",
-                                       "filequit",
+                                       "24x24/exit",
                                        "Close the application")
     helpAboutAction= self.createAction("&About",
                                        self.helpAbout,
@@ -77,9 +79,12 @@ class MainWindow(QMainWindow):
     self.addActions(self.fileMenu, (fileOpenAction,
                                     None, 
                                     fileQuitAction,))
-                                    
     self.helpMenu = self.menuBar().addMenu("&Help")
     self.addActions(self.helpMenu, (helpAboutAction,))
+    
+    fileToolBar = self.addToolBar("File")
+    fileToolBar.setObjectName("FileToolBar")
+    self.addActions(fileToolBar, (fileOpenAction,))
 
     self.setWindowTitle("Image Compare")
     
@@ -263,6 +268,8 @@ class MainWindow(QMainWindow):
 
 
 def main():
+  #style = QStyleFactory.create("cleanlooks")
+  #QApplication.setStyle(style)
   app = QApplication(sys.argv)
   app.setApplicationName("Image Changer")
   app.setWindowIcon(QIcon(':/icon.png'))
