@@ -160,6 +160,20 @@ class MainWindow(QMainWindow):
 
   def loadTwoImageSets(self):
     if self.fileOpen(0) and self.fileOpen(1):
+      ## Ensure both image sets have the same size
+      sizes = (self.images[0][0].size(), self.images[1][0].size())
+      if sizes[0] != sizes[1]:
+        larger_size = QSize(max(sizes[0].width(),  sizes[1].width()),
+                            max(sizes[0].height(), sizes[1].height()))
+        for side in [0,1]:
+          if sizes[side] != larger_size:
+            fs = "first" if side==0 else "second"
+            for i in xrange(len(self.images[side])):
+              self.updateStatus("Resizing %s dataset... %d/%d." % \
+                                (fs, i, len(self.images[side])))
+              self.images[side][i] = self.images[side][i].scaled(
+                                      larger_size,
+                                      transformMode=Qt.SmoothTransformation)
       self.currentIndex = 0
       self.updateMask()
       self.showImage()
@@ -173,7 +187,8 @@ class MainWindow(QMainWindow):
       if not _filenames:
         _filenames = [fname]
       _images = []
-      for f in _filenames:
+      for i,f in enumerate(_filenames):
+        self.updateStatus("Reading images... %d/%d." % (i, len(_filenames)))
         image = QImage(f)
         if image.isNull():
           message = "Failed to read '%s'!" % f
