@@ -29,6 +29,8 @@ class MainWindow(QMainWindow):
     self.currentIndex = 0
     self.labelImage = None
 
+    ONE_SET, TWO_SETS = range(2)
+
     self.imageLabel = QLabel()
     self.imageLabel.setMinimumSize(320,240)
     self.imageLabel.setAlignment(Qt.AlignCenter)
@@ -59,11 +61,16 @@ class MainWindow(QMainWindow):
     status.setSizeGripEnabled(True)
     status.showMessage("Ready", 5000)
 
-    fileOpenAction = self.createAction("&Open",
-                                       self.loadTwoImageSets,
-                                       QKeySequence.Open,
-                                       "24x24/document-open",
-                                       "Choose two sets of images to compare")
+    filesOpenAction = self.createAction("&Open two image sets",
+                                        self.loadTwoImageSets,
+                                        QKeySequence.Open,
+                                        "24x24/2-documents-open",
+                                        "Open two sets of images for viewing and comparing")
+    fileOpenAction  = self.createAction("Op&en single image set",
+                                        self.loadImageSet,
+                                        None,
+                                        "24x24/document-open",
+                                        "Open a set of images for viewing")
     fileQuitAction = self.createAction("&Quit",
                                        self.close,
                                        "Ctrl+Q",
@@ -76,7 +83,8 @@ class MainWindow(QMainWindow):
                                        "More information about this program")
 
     self.fileMenu = self.menuBar().addMenu("&File")
-    self.addActions(self.fileMenu, (fileOpenAction,
+    self.addActions(self.fileMenu, (filesOpenAction,
+                                    fileOpenAction,
                                     None, 
                                     fileQuitAction,))
     self.helpMenu = self.menuBar().addMenu("&Help")
@@ -84,7 +92,8 @@ class MainWindow(QMainWindow):
     
     fileToolBar = self.addToolBar("File")
     fileToolBar.setObjectName("FileToolBar")
-    self.addActions(fileToolBar, (fileOpenAction,))
+    self.addActions(fileToolBar, (filesOpenAction,
+                                  fileOpenAction))
 
     self.setWindowTitle("Image Compare")
     
@@ -158,7 +167,12 @@ class MainWindow(QMainWindow):
       return True
     return False
 
+  def loadImageSet(self):
+    """Load files for one image set"""
+    pass
+
   def loadTwoImageSets(self):
+    """Load files for two image sets"""
     if self.fileOpen(0) and self.fileOpen(1):
       ## Ensure both image sets have the same size
       sizes = (self.images[0][0].size(), self.images[1][0].size())
