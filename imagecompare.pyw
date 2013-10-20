@@ -16,7 +16,9 @@ from PyQt4.QtGui import *
 import qrc_resources
 
 __version__ = '0.1.0'
+
 RE_EXTRACT_NUMBER = re.compile(r'(\d+)')
+ONE_SET, TWO_SETS = range(2)
 
 
 class MainWindow(QMainWindow):
@@ -29,8 +31,9 @@ class MainWindow(QMainWindow):
     self.currentIndex = 0
     self.labelImage = None
 
-    ONE_SET, TWO_SETS = range(2)
+    self.mode = None
 
+    # Central label holding the montage image
     self.imageLabel = QLabel()
     self.imageLabel.setMinimumSize(320,240)
     self.imageLabel.setAlignment(Qt.AlignCenter)
@@ -38,8 +41,8 @@ class MainWindow(QMainWindow):
     self.imageLabel.setPalette(QPalette(Qt.white))
     self.setCentralWidget(self.imageLabel)
     
+    # Frame-control slider as QDockWidget
     self.frameSlider = QSlider(orientation=Qt.Horizontal)
-    #self.frameSlider.setEnabled(False)
     self.frameSlider.setRange(0,0)
     self.frameSlider.setTickPosition(QSlider.TicksBelow)
     self.frameSliderLabel = QLabel("Frame: 0")
@@ -49,7 +52,6 @@ class MainWindow(QMainWindow):
     docklayout.addWidget(self.frameSliderLabel)
     dockwidgetcontentwidget = QWidget()
     dockwidgetcontentwidget.setLayout(docklayout)
-    
     dockwidget = QDockWidget()
     dockwidget.setFeatures(QDockWidget.DockWidgetMovable)
     dockwidget.setAllowedAreas(Qt.BottomDockWidgetArea|
@@ -57,31 +59,38 @@ class MainWindow(QMainWindow):
     dockwidget.setWidget(dockwidgetcontentwidget)
     self.addDockWidget(Qt.BottomDockWidgetArea, dockwidget)
     
+    # Status bar with resize grip, for status messages
     status = self.statusBar()
     status.setSizeGripEnabled(True)
     status.showMessage("Ready", 5000)
 
+    ## Actions
+    # Open two image sets
     filesOpenAction = self.createAction("&Open two image sets",
                                         self.loadTwoImageSets,
                                         QKeySequence.Open,
                                         "24x24/2-documents-open",
                                         "Open two sets of images for viewing and comparing")
+    # Open one image set
     fileOpenAction  = self.createAction("Op&en single image set",
                                         self.loadImageSet,
                                         None,
                                         "24x24/document-open",
                                         "Open a set of images for viewing")
+    # Exit program
     fileQuitAction = self.createAction("&Quit",
                                        self.close,
                                        "Ctrl+Q",
                                        "24x24/exit",
                                        "Close the application")
+    # Display "About" dialog
     helpAboutAction= self.createAction("&About",
                                        self.helpAbout,
                                        None,
                                        "helpabout",
                                        "More information about this program")
 
+    # Menus and toolbars
     self.fileMenu = self.menuBar().addMenu("&File")
     self.addActions(self.fileMenu, (filesOpenAction,
                                     fileOpenAction,
@@ -89,7 +98,6 @@ class MainWindow(QMainWindow):
                                     fileQuitAction,))
     self.helpMenu = self.menuBar().addMenu("&Help")
     self.addActions(self.helpMenu, (helpAboutAction,))
-    
     fileToolBar = self.addToolBar("File")
     fileToolBar.setObjectName("FileToolBar")
     self.addActions(fileToolBar, (filesOpenAction,
@@ -101,11 +109,13 @@ class MainWindow(QMainWindow):
                  self.frameSliderChange)
 
   def frameSliderChange(self, newValue):
+    """React to the user manipulating the frame control slider"""
     if newValue == self.currentIndex:
       return
     self.changeFrame(newValue)
 
   def helpAbout(self):
+    """Display "About" dialog"""
     QMessageBox.about(self, "About Image Compare",
         """<b>Image Compare</b> v%s
         <p>Copyright &copy; 2013 Nikolaus Mayer
@@ -118,6 +128,7 @@ class MainWindow(QMainWindow):
             platform.system() ))
 
   def addActions(self, target, actions):
+    """Add a list of actions (and separators) to a menu/toolbar target"""
     for action in actions:
       if action is None:
         target.addSeparator()
@@ -131,6 +142,7 @@ class MainWindow(QMainWindow):
                    tip=None, 
                    checkable=False, 
                    signal="triggered()"):
+    """Shortcut for creating a QAction object and setting attributes"""
     action = QAction(text, self)
     if icon is not None: 
       action.setIcon(QIcon(':/%s.png' % icon))
@@ -167,9 +179,24 @@ class MainWindow(QMainWindow):
       return True
     return False
 
+  def resetFrameSlider(self):
+    """Reset the frame control slider to 0 and update range and label"""
+    if not self.images[0]:
+      return
+    self.frameSlider.setRange(0,len(self.images[0])-1)
+    self.frameSlider.setValue(0)
+    self.frameSliderLabel.setText("Frame: 1")
+
+
   def loadImageSet(self):
     """Load files for one image set"""
-    pass
+    if self.fileOpen(0):
+      self.images[1] = self.images[0]
+      self.mode = ONE_SET
+      self.currentIndex = 0
+      self.updateMask()
+      self.showImage()
+      self.resetFrameSlider()
 
   def loadTwoImageSets(self):
     """Load files for two image sets"""
@@ -188,12 +215,11 @@ class MainWindow(QMainWindow):
               self.images[side][i] = self.images[side][i].scaled(
                                       larger_size,
                                       transformMode=Qt.SmoothTransformation)
+      self.mode = TWO_SETS
       self.currentIndex = 0
       self.updateMask()
       self.showImage()
-      self.frameSlider.setRange(0,len(self.images[0])-1)
-      self.frameSlider.setValue(0)
-      self.frameSliderLabel.setText("Frame: 1")
+      self.resetFrameSlider()
 
   def loadFiles(self, fname=None, side=None):
     if fname and side in (0,1):
@@ -256,24 +282,38 @@ class MainWindow(QMainWindow):
     self.changeFrame(cid)
 
   def showImage(self):
-    if not self.images[0] or not self.images[1] or \
-       self.currentIndex < 0 or \
-       self.currentIndex >= len(self.images[0]) or \
-       self.currentIndex >= len(self.images[1]):
-      return
-    self.imageLabel.setMinimumSize(self.images[0][self.currentIndex].size())
-    
-    i0 = self.images[0][self.currentIndex]
-    i1 = self.images[1][self.currentIndex]
-    i0.setAlphaChannel(self.masks[0])
-    i1.setAlphaChannel(self.masks[1])
-    self.labelImage = QImage(i0.size(), QImage.Format_ARGB32)
-    painter = QPainter(self.labelImage)
-    painter.drawImage(0, 0, i0)
-    painter.drawImage(0, 0, i1)
-    self.imageLabel.setPixmap(QPixmap.fromImage(self.labelImage))
+    """Update the image shown in the central label"""
+    # ONE image set
+    if   self.mode == ONE_SET:
+      if not self.images[0] or \
+         self.currentIndex < 0 or \
+         self.currentIndex >= len(self.images[0]):
+        return
+      self.imageLabel.setMinimumSize(self.images[0][self.currentIndex].size())
+      self.labelImage = QImage(self.images[0][self.currentIndex])
+      self.imageLabel.setPixmap(QPixmap.fromImage(self.labelImage))
+    # TWO image sets
+    elif self.mode == TWO_SETS:
+      if not self.images[0] or \
+         not self.images[1] or \
+         self.currentIndex < 0 or \
+         self.currentIndex >= len(self.images[0]) or \
+         self.currentIndex >= len(self.images[1]):
+        return
+      self.imageLabel.setMinimumSize(self.images[0][self.currentIndex].size())
+      # Blend the two images using alpha mask
+      i0 = self.images[0][self.currentIndex]
+      i1 = self.images[1][self.currentIndex]
+      i0.setAlphaChannel(self.masks[0])
+      i1.setAlphaChannel(self.masks[1])
+      self.labelImage = QImage(i0.size(), QImage.Format_ARGB32)
+      painter = QPainter(self.labelImage)
+      painter.drawImage(0, 0, i0)
+      painter.drawImage(0, 0, i1)
+      self.imageLabel.setPixmap(QPixmap.fromImage(self.labelImage))
 
   def updateMask(self):
+    """Update the alpha masks used for blending two images"""
     if not self.images[0]:
       return
     mask = QImage(self.images[0][0].size(), QImage.Format_ARGB32)
@@ -289,8 +329,8 @@ class MainWindow(QMainWindow):
     self.masks[1] = QImage(mask)
     self.masks[1].invertPixels()
 
-
   def updateStatus(self, message=None):
+    """Write a new message to the application's status bar"""
     if message is None:
       return
     self.statusBar().showMessage(message, 5000)
@@ -301,7 +341,7 @@ def main():
   #QApplication.setStyle(style)
   app = QApplication(sys.argv)
   app.setApplicationName("Image Changer")
-  app.setWindowIcon(QIcon(':/icon.png'))
+  app.setWindowIcon(QIcon(':/24x24/icon.png'))
   form = MainWindow()
   form.show()
   app.exec_()

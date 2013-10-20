@@ -3,5 +3,6 @@
   <file alias="document-open.png">icons/gnome-wise/24x24/actions/document-open.png</file>
   <file alias="2-documents-open.png">icons/gnome-wise/24x24/actions/2-documents-open.png</file>
   <file alias="exit.png">icons/gnome-wise/24x24/actions/exit.png</file>
+  <file alias="icon.png">icons/gnome-wise/24x24/icon.png</file>
 </qresource>
 </RCC>
