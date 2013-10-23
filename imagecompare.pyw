@@ -17,16 +17,32 @@ import qrc_resources
 
 __version__ = '0.1.0'
 
-RE_EXTRACT_NUMBER = re.compile(r'(\d+)')
-ONE_SET, TWO_SETS = range(2)
+class File(object):
+  """A class for holding a single file"""
+  def __init__(self, filename, index, data):
+    self.filename = filename
+    self.index = index
+    self.data = data
+
+class Fileset(object):
+  """A class for holding a set of files"""
+  def __init__(self, basename):
+    self.basename = basename
+    self.files = []
+
+  def addFile(self, newfile):
+    self.files.append(newfile)
 
 
 class MainWindow(QMainWindow):
+  RE_EXTRACT_NUMBER = re.compile(r'(\d+)')
+  ONE_SET, TWO_SETS = range(2)
+
   def __init__(self, parent=None):
     super(MainWindow, self).__init__(parent)
 
     self.filenames = [None, None]
-    self.images    = [[], []]
+    self.filesets  = [[], []]
     self.masks     = [[], []]
     self.currentIndex = 0
     self.labelImage = None
@@ -167,7 +183,7 @@ class MainWindow(QMainWindow):
       dir = os.path.dirname(self.filenames[1-side])
     formats = ['*.%s' % unicode(format).lower() \
                for format in QImageReader.supportedImageFormats()]
-    header = "Choose member of %s image set" % ["first", "second"][side]
+    header = "Choose member of %simage set" % ["", "second "][side]
     fname = unicode(QFileDialog.getOpenFileName(
               self,
               "%s - %s" % (QApplication.applicationName(), header),
@@ -181,9 +197,9 @@ class MainWindow(QMainWindow):
 
   def resetFrameSlider(self):
     """Reset the frame control slider to 0 and update range and label"""
-    if not self.images[0]:
+    if not self.filesets[0]:
       return
-    self.frameSlider.setRange(0,len(self.images[0])-1)
+    self.frameSlider.setRange(0,len(self.filesets[0])-1)
     self.frameSlider.setValue(0)
     self.frameSliderLabel.setText("Frame: 1")
 
@@ -191,31 +207,32 @@ class MainWindow(QMainWindow):
   def loadImageSet(self):
     """Load files for one image set"""
     if self.fileOpen(0):
-      self.images[1] = self.images[0]
-      self.mode = ONE_SET
+      self.filesets[1] = self.filesets[0]
+      self.mode = self.ONE_SET
       self.currentIndex = 0
       self.updateMask()
       self.showImage()
       self.resetFrameSlider()
+      self.setWindowTitle("Image Compare - %s" % self.filenames[0])
 
   def loadTwoImageSets(self):
     """Load files for two image sets"""
     if self.fileOpen(0) and self.fileOpen(1):
       ## Ensure both image sets have the same size
-      sizes = (self.images[0][0].size(), self.images[1][0].size())
+      sizes = (self.filesets[0][0].size(), self.filesets[1][0].size())
       if sizes[0] != sizes[1]:
         larger_size = QSize(max(sizes[0].width(),  sizes[1].width()),
                             max(sizes[0].height(), sizes[1].height()))
         for side in [0,1]:
           if sizes[side] != larger_size:
             fs = "first" if side==0 else "second"
-            for i in xrange(len(self.images[side])):
+            for i in xrange(len(self.filesets[side])):
               self.updateStatus("Resizing %s dataset... %d/%d." % \
-                                (fs, i, len(self.images[side])))
-              self.images[side][i] = self.images[side][i].scaled(
+                                (fs, i, len(self.filesets[side])))
+              self.filesets[side][i] = self.filesets[side][i].scaled(
                                       larger_size,
                                       transformMode=Qt.SmoothTransformation)
-      self.mode = TWO_SETS
+      self.mode = self.TWO_SETS
       self.currentIndex = 0
       self.updateMask()
       self.showImage()
@@ -227,7 +244,9 @@ class MainWindow(QMainWindow):
       if not _filenames:
         _filenames = [fname]
       _images = []
+      # TODO Ask user to specify image range within _filenames to load
       for i,f in enumerate(_filenames):
+        # TODO Allow cancelling
         self.updateStatus("Reading images... %d/%d." % (i, len(_filenames)))
         image = QImage(f)
         if image.isNull():
@@ -236,7 +255,7 @@ class MainWindow(QMainWindow):
         else:
           _images.append(image.convertToFormat(QImage.Format_ARGB32))
       else:
-        self.images[side] = _images
+        self.filesets[side] = _images
         message = "Loaded %d files around '%s'." % \
                   (len(_filenames), _filenames[0])
       self.updateStatus(message)
@@ -245,7 +264,7 @@ class MainWindow(QMainWindow):
     if fname is None:
       return
     number_groups = []
-    for match in RE_EXTRACT_NUMBER.finditer(fname):
+    for match in self.RE_EXTRACT_NUMBER.finditer(fname):
       number = int(match.group(1))
       start, end = match.start(), match.end()
       length = end-start
@@ -267,7 +286,7 @@ class MainWindow(QMainWindow):
     self.currentIndex = index
     self.showImage()
     self.updateStatus("Frame %d/%d" % (self.currentIndex+1,
-                                       len(self.images[0])))
+                                       len(self.filesets[0])))
     self.frameSliderLabel.setText("Frame: %d" % (index+1))
     self.frameSlider.setValue(index)
 
@@ -278,32 +297,32 @@ class MainWindow(QMainWindow):
     else:
       cid -= 1
     cid = max(cid, 0)
-    cid = min(cid, len(self.images[0])-1)
+    cid = min(cid, len(self.filesets[0])-1)
     self.changeFrame(cid)
 
   def showImage(self):
     """Update the image shown in the central label"""
     # ONE image set
-    if   self.mode == ONE_SET:
-      if not self.images[0] or \
+    if   self.mode == self.ONE_SET:
+      if not self.filesets[0] or \
          self.currentIndex < 0 or \
-         self.currentIndex >= len(self.images[0]):
+         self.currentIndex >= len(self.filesets[0]):
         return
-      self.imageLabel.setMinimumSize(self.images[0][self.currentIndex].size())
-      self.labelImage = QImage(self.images[0][self.currentIndex])
+      self.imageLabel.setMinimumSize(self.filesets[0][self.currentIndex].size())
+      self.labelImage = QImage(self.filesets[0][self.currentIndex])
       self.imageLabel.setPixmap(QPixmap.fromImage(self.labelImage))
     # TWO image sets
-    elif self.mode == TWO_SETS:
-      if not self.images[0] or \
-         not self.images[1] or \
+    elif self.mode == self.TWO_SETS:
+      if not self.filesets[0] or \
+         not self.filesets[1] or \
          self.currentIndex < 0 or \
-         self.currentIndex >= len(self.images[0]) or \
-         self.currentIndex >= len(self.images[1]):
+         self.currentIndex >= len(self.filesets[0]) or \
+         self.currentIndex >= len(self.filesets[1]):
         return
-      self.imageLabel.setMinimumSize(self.images[0][self.currentIndex].size())
+      self.imageLabel.setMinimumSize(self.filesets[0][self.currentIndex].size())
       # Blend the two images using alpha mask
-      i0 = self.images[0][self.currentIndex]
-      i1 = self.images[1][self.currentIndex]
+      i0 = self.filesets[0][self.currentIndex]
+      i1 = self.filesets[1][self.currentIndex]
       i0.setAlphaChannel(self.masks[0])
       i1.setAlphaChannel(self.masks[1])
       self.labelImage = QImage(i0.size(), QImage.Format_ARGB32)
@@ -314,9 +333,9 @@ class MainWindow(QMainWindow):
 
   def updateMask(self):
     """Update the alpha masks used for blending two images"""
-    if not self.images[0]:
+    if not self.filesets[0]:
       return
-    mask = QImage(self.images[0][0].size(), QImage.Format_ARGB32)
+    mask = QImage(self.filesets[0][0].size(), QImage.Format_ARGB32)
     h, w = mask.height(), mask.width()
     black, white = qRgb(0,0,0), qRgb(255,255,255)
     for y in xrange(h):
