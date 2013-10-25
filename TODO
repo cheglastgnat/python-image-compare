@@ -1,2 +1,6 @@
 TODO
 ====
+
+- Display names of open file sets
+- Allow for multiple open file sets (one active at a time)
+- Filesets are potentially incomplete at open time. The user can instruct the application to continuously check for and automatically load new files that extend the existing file sets.
