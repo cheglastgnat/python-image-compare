@@ -372,7 +372,6 @@ class MainWindow(QMainWindow):
       start, end = match.start(), match.end()
       length = end-start
       template = fpathname + '/' + fbasename[:start] + '%0*d' + fbasename[end:]
-      print template
       found = []
       n = number-1
       while os.path.isfile(template % (length,n)):
@@ -385,13 +384,11 @@ class MainWindow(QMainWindow):
         found.append(template % (length,n))
         n += 1
       upper = n-1
-      found_sets.append(FilesetFilenamesGenerator(template,
-                                                  length,
-                                                  lower,
-                                                  upper))
+      found_sets.append(FilesetFilenamesGenerator(template, length, lower, upper))
     return found_sets
   
   def changeFrame(self, index):
+    """Change the displayed frame"""
     self.currentIndex = index
     self.showImage()
     self.updateStatus("Frame %d/%d" % (self.currentIndex+1,
@@ -400,6 +397,7 @@ class MainWindow(QMainWindow):
     self.frameSlider.setValue(index)
 
   def wheelEvent(self, event):
+    """Scroll through image set via mouse wheel"""
     cid = self.currentIndex
     if event.delta() > 0:
       cid += 1
@@ -462,6 +460,7 @@ class MainWindow(QMainWindow):
     if message is None:
       return
     self.statusBar().showMessage(message, 5000)
+
 
 
 def main():
