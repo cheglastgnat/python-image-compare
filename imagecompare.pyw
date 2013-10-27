@@ -17,12 +17,14 @@ import qrc_resources
 
 __version__ = '0.1.0'
 
+
 class File(object):
   """A class for holding a single file"""
   def __init__(self, filename, index, data):
     self.filename = filename
     self.index = index
     self.data = data
+
 
 class Fileset(object):
   """A class for holding a set of files"""
@@ -34,7 +36,61 @@ class Fileset(object):
     self.files.append(newfile)
 
 
+class FilesetFilenamesGenerator(object):
+  """Concise representation of a series of numbered filenames"""
+  def __init__(self, template, length, lower, upper):
+    self.template = template
+    self.length = length
+    self.lower = lower
+    self.upper = upper
+
+  def generateFiles(self):
+    """Generate the explicit list of filenames"""
+    return [self.template % (self.length, i) for i in xrange(self.lower,
+                                                             self.upper+1)]
+
+  def __str__(self):
+    return """FilesetFilenamesGenerator:
+      template = %s,
+      length   = %d,
+      lower    = %d,
+      upper    = %d""" % (self.template,self.length,self.lower,self.upper)
+
+  def __cmp__(self, other):
+    """Compare two instances by cardinality (amount of files)"""
+    return cmp((self.upper-self.lower), (other.upper-other.lower))
+
+
+class GeneratorChooseDlg(QDialog):
+  """
+  Present a number of options, and allow the user to choose one (or cancel).
+  The CALLER has to keep the input strings to a sensible length
+  """
+  def __init__(self, options, parent=None):
+    super(GeneratorChooseDlg, self).__init__(parent)
+    label = QLabel("The chosen image can belong to multiple image sets, depending on which part of the filename contains the file index. Please choose one of the possible image sets to continue.")
+    label.setWordWrap(True)
+    self.options = QListWidget()
+    self.options.addItems(options)
+    self.options.setMinimumWidth(min(self.options.sizeHintForColumn(0)+10, 600))
+    buttonbox = QDialogButtonBox(QDialogButtonBox.Ok|
+                                 QDialogButtonBox.Cancel)
+    layout = QVBoxLayout()
+    layout.addWidget(label)
+    layout.addWidget(self.options)
+    layout.addWidget(buttonbox)
+    self.setLayout(layout)
+    self.connect(buttonbox, SIGNAL("accepted()"),
+                 self, SLOT("accept()"))
+    self.connect(buttonbox, SIGNAL("rejected()"),
+                 self, SLOT("reject()"))
+    self.setWindowTitle("%s - Choose image set" % QApplication.applicationName())
+
+
 class MainWindow(QMainWindow):
+  """
+  Main window class
+  """
   RE_EXTRACT_NUMBER = re.compile(r'(\d+)')
   ONE_SET, TWO_SETS = range(2)
 
@@ -42,8 +98,8 @@ class MainWindow(QMainWindow):
     super(MainWindow, self).__init__(parent)
 
     self.filenames = [None, None]
-    self.filesets  = [[], []]
-    self.masks     = [[], []]
+    self.filesets  = [None, None]
+    self.masks     = [None, None]
     self.currentIndex = 0
     self.labelImage = None
 
@@ -174,8 +230,10 @@ class MainWindow(QMainWindow):
     return action
 
   def fileOpen(self, side=None):
+    """Load a set of images, discovered from one specimen selected by the user"""
     if side not in (0,1):
       return False
+    # Use previously opened folder (if applicable)
     dir = '.'
     if self.filenames[side]:
       dir = os.path.dirname(self.filenames[side])
@@ -189,9 +247,9 @@ class MainWindow(QMainWindow):
               "%s - %s" % (QApplication.applicationName(), header),
               dir,
               "Image files (%s)" % ' '.join(formats)))
+    # If the user selected a file, autodiscover a fitting set
     if fname:
       self.loadFiles(fname, side)
-      self.filenames[side] = fname
       return True
     return False
 
@@ -213,7 +271,8 @@ class MainWindow(QMainWindow):
       self.updateMask()
       self.showImage()
       self.resetFrameSlider()
-      self.setWindowTitle("Image Compare - %s" % self.filenames[0])
+      self.setWindowTitle("%s - %s" % (QApplication.applicationName(),
+                                       self.filenames[0]))
 
   def loadTwoImageSets(self):
     """Load files for two image sets"""
@@ -238,49 +297,99 @@ class MainWindow(QMainWindow):
       self.showImage()
       self.resetFrameSlider()
 
-  def loadFiles(self, fname=None, side=None):
-    if fname and side in (0,1):
-      _filenames = self.findFiles(fname)
-      if not _filenames:
-        _filenames = [fname]
-      _images = []
-      # TODO Ask user to specify image range within _filenames to load
-      for i,f in enumerate(_filenames):
-        # TODO Allow cancelling
-        self.updateStatus("Reading images... %d/%d." % (i, len(_filenames)))
-        image = QImage(f)
-        if image.isNull():
-          message = "Failed to read '%s'!" % f
-          break
-        else:
-          _images.append(image.convertToFormat(QImage.Format_ARGB32))
+
+  def chooseFileSetGenerator(self, generators):
+    """Let the user choose a file set"""
+    if not generators:
+      raise Exception("No generators given!")
+    if len(generators) == 1:
+      return generators[0]
+    descriptions = []
+    # Options from which the user can choose
+    for g in generators:
+      amount = g.upper-g.lower+1
+      basename_template = os.path.split(g.template)[1]
+      examples = [os.path.split(s)[1] for s in g.generateFiles()]
+      if len(examples) == 1:
+        descriptions.append("(Only this file) %s" % examples[0])
+      elif len(examples) > 3:
+        descriptions.append("(%d files) %s,..." % (amount, 
+                                                  ", ".join(examples[:3])))
       else:
-        self.filesets[side] = _images
-        message = "Loaded %d files around '%s'." % \
-                  (len(_filenames), _filenames[0])
-      self.updateStatus(message)
+        descriptions.append("(%d files) %s" % (amount, ", ".join(examples)))
+    # Create dialog
+    dialog = GeneratorChooseDlg(descriptions, self)
+    if dialog.exec_():
+      return generators[dialog.options.currentRow()]
+
+
+  def loadFiles(self, fname=None, side=None):
+    """Load file set, given one specimen (fname)"""
+    if fname is None or \
+       side not in (0,1):
+      return
+    potential_sets = self.findFiles(fname)
+    # Sort potential_sets according to set cardinality
+    potential_sets.sort(reverse=True)
+    chosen = self.chooseFileSetGenerator(potential_sets)
+    if chosen is None:
+      return
+    found_filenames = chosen.generateFiles()
+    if not found_filenames:
+      found_filenames = [fname]
+    _images = []
+    # TODO Ask user to specify image range within found_filenames to load
+    for i,f in enumerate(found_filenames):
+      # TODO Allow cancelling
+      self.updateStatus("Reading images... %d/%d." % (i, len(found_filenames)))
+      image = QImage(f)
+      if image.isNull():
+        message = "Failed to read '%s'!" % f
+        break
+      else:
+        _images.append(image.convertToFormat(QImage.Format_ARGB32))
+    else:
+      self.filesets[side] = _images
+      message = "Loaded %d files around '%s'." % \
+                (len(found_filenames), found_filenames[0])
+    self.updateStatus(message)
 
   def findFiles(self, fname=None):
+    """
+    Discover image set, given one specimen (fname)
+    Returns a list of tuples (T, l, lower, upper) where a set of found
+    filenames can be generated by [T % (l,i) for i in range(lower,upper+1)]
+    """
     if fname is None:
       return
+    # Only search for numberings withing the filename, not the path
+    # TODO future feature?
+    fpathname, fbasename = os.path.split(fname)
+    found_sets = []
     number_groups = []
-    for match in self.RE_EXTRACT_NUMBER.finditer(fname):
+    for match in self.RE_EXTRACT_NUMBER.finditer(fbasename):
       number = int(match.group(1))
       start, end = match.start(), match.end()
       length = end-start
-      template = fname[:start] + '%0*d' + fname[end:]
+      template = fpathname + '/' + fbasename[:start] + '%0*d' + fbasename[end:]
+      print template
       found = []
       n = number-1
       while os.path.isfile(template % (length,n)):
         found.append(template % (length,n))
         n -= 1
+      lower = n+1
       found = found[::-1]
       n = number
       while os.path.isfile(template % (length,n)):
         found.append(template % (length,n))
         n += 1
-      if len(found) > 1:
-        return found
+      upper = n-1
+      found_sets.append(FilesetFilenamesGenerator(template,
+                                                  length,
+                                                  lower,
+                                                  upper))
+    return found_sets
   
   def changeFrame(self, index):
     self.currentIndex = index
