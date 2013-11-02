@@ -25,15 +25,28 @@ class File(object):
     self.index = index
     self.data = data
 
+  def size(self):
+    return self.data.size()
 
 class Fileset(object):
   """A class for holding a set of files"""
-  def __init__(self, basename):
-    self.basename = basename
+  def __init__(self):
     self.files = []
 
   def addFile(self, newfile):
     self.files.append(newfile)
+
+  def size(self):
+    return len(self.files)
+
+  def isEmpty(self):
+    return len(self.files)==0
+
+  def __getitem__(self, key):
+    if not isinstance(key, int):
+      raise KeyError()
+    else:
+      return self.files[key]
 
 
 class FilesetFilenamesGenerator(object):
@@ -175,7 +188,7 @@ class MainWindow(QMainWindow):
     self.addActions(fileToolBar, (filesOpenAction,
                                   fileOpenAction))
 
-    self.setWindowTitle("Image Compare")
+    self.setWindowTitle(QApplication.applicationName())
     
     self.connect(self.frameSlider, SIGNAL("valueChanged(int)"),
                  self.frameSliderChange)
@@ -255,9 +268,9 @@ class MainWindow(QMainWindow):
 
   def resetFrameSlider(self):
     """Reset the frame control slider to 0 and update range and label"""
-    if not self.filesets[0]:
+    if self.filesets[0].isEmpty():
       return
-    self.frameSlider.setRange(0,len(self.filesets[0])-1)
+    self.frameSlider.setRange(0, self.filesets[0].size()-1)
     self.frameSlider.setValue(0)
     self.frameSliderLabel.setText("Frame: 1")
 
@@ -269,10 +282,9 @@ class MainWindow(QMainWindow):
       self.mode = self.ONE_SET
       self.currentIndex = 0
       self.updateMask()
-      self.showImage()
+      self.changeFrame(0)
+      #self.showImage()
       self.resetFrameSlider()
-      self.setWindowTitle("%s - %s" % (QApplication.applicationName(),
-                                       self.filenames[0]))
 
   def loadTwoImageSets(self):
     """Load files for two image sets"""
@@ -285,16 +297,18 @@ class MainWindow(QMainWindow):
         for side in [0,1]:
           if sizes[side] != larger_size:
             fs = "first" if side==0 else "second"
-            for i in xrange(len(self.filesets[side])):
+            for i in xrange(self.filesets[side].size()):
               self.updateStatus("Resizing %s dataset... %d/%d." % \
-                                (fs, i, len(self.filesets[side])))
+                                (fs, i, self.filesets[side].size())
+                               )
               self.filesets[side][i] = self.filesets[side][i].scaled(
                                       larger_size,
                                       transformMode=Qt.SmoothTransformation)
       self.mode = self.TWO_SETS
       self.currentIndex = 0
       self.updateMask()
-      self.showImage()
+      self.changeFrame(0)
+      #self.showImage()
       self.resetFrameSlider()
 
 
@@ -337,7 +351,7 @@ class MainWindow(QMainWindow):
     found_filenames = chosen.generateFiles()
     if not found_filenames:
       found_filenames = [fname]
-    _images = []
+    _images = Fileset()
     # TODO Ask user to specify image range within found_filenames to load
     for i,f in enumerate(found_filenames):
       # TODO Allow cancelling
@@ -347,8 +361,13 @@ class MainWindow(QMainWindow):
         message = "Failed to read '%s'!" % f
         break
       else:
-        _images.append(image.convertToFormat(QImage.Format_ARGB32))
-    else:
+        _images.addFile( File( f,
+                               i,
+                               image.convertToFormat(QImage.Format_ARGB32)
+                             )
+                       )
+    else:  # All files successfully read
+      self.filenames[side] = found_filenames[0]
       self.filesets[side] = _images
       message = "Loaded %d files around '%s'." % \
                 (len(found_filenames), found_filenames[0])
@@ -391,8 +410,18 @@ class MainWindow(QMainWindow):
     """Change the displayed frame"""
     self.currentIndex = index
     self.showImage()
+    if self.mode == self.ONE_SET:
+      fn = os.path.split(self.filesets[0][self.currentIndex].filename)[1]
+      titlestr = "%s - %s" % (fn, QApplication.applicationName())
+      self.setWindowTitle(titlestr)
+    else:
+      fn0 =  os.path.split(self.filesets[0][self.currentIndex].filename)[1]
+      fn1 =  os.path.split(self.filesets[1][self.currentIndex].filename)[1]
+      titlestr = "%s|%s - %s" % (fn0, fn1, QApplication.applicationName())
+      self.setWindowTitle(titlestr)
+
     self.updateStatus("Frame %d/%d" % (self.currentIndex+1,
-                                       len(self.filesets[0])))
+                                       self.filesets[0].size()))
     self.frameSliderLabel.setText("Frame: %d" % (index+1))
     self.frameSlider.setValue(index)
 
@@ -404,32 +433,32 @@ class MainWindow(QMainWindow):
     else:
       cid -= 1
     cid = max(cid, 0)
-    cid = min(cid, len(self.filesets[0])-1)
+    cid = min(cid, self.filesets[0].size()-1)
     self.changeFrame(cid)
 
   def showImage(self):
     """Update the image shown in the central label"""
     # ONE image set
-    if   self.mode == self.ONE_SET:
-      if not self.filesets[0] or \
+    if self.mode == self.ONE_SET:
+      if self.filesets[0].isEmpty() or \
          self.currentIndex < 0 or \
-         self.currentIndex >= len(self.filesets[0]):
+         self.currentIndex >= self.filesets[0].size():
         return
       self.imageLabel.setMinimumSize(self.filesets[0][self.currentIndex].size())
-      self.labelImage = QImage(self.filesets[0][self.currentIndex])
+      self.labelImage = QImage(self.filesets[0][self.currentIndex].data)
       self.imageLabel.setPixmap(QPixmap.fromImage(self.labelImage))
     # TWO image sets
     elif self.mode == self.TWO_SETS:
-      if not self.filesets[0] or \
-         not self.filesets[1] or \
+      if self.filesets[0].isEmpty() or \
+         self.filesets[1].isEmpty() or \
          self.currentIndex < 0 or \
-         self.currentIndex >= len(self.filesets[0]) or \
-         self.currentIndex >= len(self.filesets[1]):
+         self.currentIndex >= self.filesets[0].size() or \
+         self.currentIndex >= self.filesets[1].size():
         return
       self.imageLabel.setMinimumSize(self.filesets[0][self.currentIndex].size())
       # Blend the two images using alpha mask
-      i0 = self.filesets[0][self.currentIndex]
-      i1 = self.filesets[1][self.currentIndex]
+      i0 = self.filesets[0][self.currentIndex].data
+      i1 = self.filesets[1][self.currentIndex].data
       i0.setAlphaChannel(self.masks[0])
       i1.setAlphaChannel(self.masks[1])
       self.labelImage = QImage(i0.size(), QImage.Format_ARGB32)
@@ -440,7 +469,7 @@ class MainWindow(QMainWindow):
 
   def updateMask(self):
     """Update the alpha masks used for blending two images"""
-    if not self.filesets[0]:
+    if self.filesets[0].isEmpty():
       return
     mask = QImage(self.filesets[0][0].size(), QImage.Format_ARGB32)
     h, w = mask.height(), mask.width()
@@ -467,7 +496,7 @@ def main():
   #style = QStyleFactory.create("cleanlooks")
   #QApplication.setStyle(style)
   app = QApplication(sys.argv)
-  app.setApplicationName("Image Changer")
+  app.setApplicationName("Image Compare")
   app.setWindowIcon(QIcon(':/24x24/icon.png'))
   form = MainWindow()
   form.show()
